@@ -145,7 +145,8 @@ class WebpackClient {
         if (this.shouldProcessFile(normalModule.userRequest)) {
             const webpackLoaderPath = resolve(
                 "node_modules",
-                "galadriel-webpack-client",
+                "@galadrielcss",
+                "webpack",
                 "dist",
                 "loader",
                 "index.js"
