@@ -16,7 +16,7 @@
     "license": "Galadriel CSS and Nenyr License Agreement",
     "repository": {
         "type": "git",
-        "url": "https://github.com/patrickgunnar/galadrielcss"
+        "url": "https://github.com/patrickgunnar/galadrielcss-webpack"
     },
     "author": "Patrick Gunnar",
     "private": false,
