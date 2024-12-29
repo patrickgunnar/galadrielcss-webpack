@@ -25,129 +25,134 @@ class WebpackClient {
         compiler.hooks.compilation.tap(
             WEBPACK_CLIENT_NAME,
             (compilation: Compilation) => {
-                const NormalModule = compiler.webpack?.NormalModule;
-                const isNormalModuleAvailable =
-                    Boolean(NormalModule) &&
-                    Boolean(NormalModule.getCompilationHooks);
-
-                if (isNormalModuleAvailable) {
-                    NormalModule.getCompilationHooks(
-                        compilation
-                    ).beforeLoaders.tap(
-                        WEBPACK_CLIENT_NAME,
-                        this.processNormalModuleRequest
-                    );
-                } else {
-                    compilation.hooks.normalModuleLoader.tap(
-                        WEBPACK_CLIENT_NAME,
-                        this.processNormalModuleRequest
-                    );
-                }
+                this.handleNormalModuleHooks(compilation);
             }
         );
 
         if (process.env.NODE_ENV === "production") {
-            if (!hasRunGaladrielBuild) {
-                hasRunGaladrielBuild = true;
-
-                compiler.hooks.beforeRun.tapPromise(
-                    WEBPACK_CLIENT_NAME,
-                    async () => {
-                        console.log("\n");
-                        console.log(PRINT_TAB, "Installing Galadriel CSS...");
-
-                        await this.installGaladrielCss();
-
-                        console.log(
-                            PRINT_TAB,
-                            "Starting the Galadriel CSS build...\n\n"
-                        );
-
-                        await this.startGaladrielBuild();
-                    }
-                );
-            }
-
-            compiler.hooks.done.tapPromise(WEBPACK_CLIENT_NAME, async (_) => {
-                if (!hasRemovedGaladrielDir) {
-                    hasRemovedGaladrielDir = true;
-
-                    this.removeGaladrielTempFolder();
-                }
-            });
+            this.setupProductionHooks(compiler);
         }
     }
 
-    async installGaladrielCss(): Promise<void> {
-        const platform = os.platform();
-        const architecture = os.arch();
-        const patch = verifyOS(platform, architecture);
+    private handleNormalModuleHooks(compilation: Compilation) {
+        const NormalModule = compilation.compiler.webpack?.NormalModule;
 
-        return new Promise((resolve, reject) => {
-            if (patch !== null) {
-                console.log(
-                    PRINT_TAB,
-                    "Starting installation of Galadriel CSS..."
-                );
+        const isNormalModuleAvailable =
+            Boolean(NormalModule) && Boolean(NormalModule.getCompilationHooks);
 
-                const downloadUrl = `https://github.com/patrickgunnar/galadrielcss/releases/latest/download/galadrielcss-${patch}${
-                    platform === "win32" ? ".exe" : ""
-                }`;
-
-                console.log(
-                    PRINT_TAB,
-                    `Downloading Galadriel CSS binary for: ${patch}`
-                );
-
-                try {
-                    const response = request("GET", downloadUrl);
-
-                    console.log(
-                        PRINT_TAB,
-                        "Galadriel CSS binary downloaded successfully!"
-                    );
-
-                    createFolderPathSync(tempGaladrielDir);
-                    writeFileSync(galadrielPath, response.getBody());
-                    // Grant execute permissions to the binary
-                    chmodSync(galadrielPath, 0o755);
-
-                    console.log(
-                        PRINT_TAB,
-                        `Galadriel CSS binary installed at: ${galadrielPath}`
-                    );
-
-                    resolve();
-                } catch (error: any) {
-                    console.error(
-                        PRINT_TAB,
-                        "Error during installation:",
-                        error.message
-                    );
-                    console.error(PRINT_TAB, "Stack trace:", error.stack);
-
-                    reject(error);
-                }
-            }
-        });
+        if (isNormalModuleAvailable) {
+            NormalModule.getCompilationHooks(compilation).beforeLoaders.tap(
+                WEBPACK_CLIENT_NAME,
+                this.processNormalModuleRequest
+            );
+        } else {
+            compilation.hooks.normalModuleLoader.tap(
+                WEBPACK_CLIENT_NAME,
+                this.processNormalModuleRequest
+            );
+        }
     }
 
-    async startGaladrielBuild(): Promise<void> {
+    private setupProductionHooks(compiler: Compiler) {
+        if (!hasRunGaladrielBuild) {
+            hasRunGaladrielBuild = true;
+
+            compiler.hooks.beforeRun.tapPromise(
+                WEBPACK_CLIENT_NAME,
+                this.handleBeforeRun
+            );
+        }
+
+        compiler.hooks.done.tapPromise(
+            WEBPACK_CLIENT_NAME,
+            this.cleanupAfterBuild
+        );
+    }
+
+    private async handleBeforeRun() {
+        console.log("\n", PRINT_TAB, "Installing Galadriel CSS...");
+
+        try {
+            this.installGaladrielCss();
+            console.log(PRINT_TAB, "Starting the Galadriel CSS build...\n\n");
+            await this.startGaladrielBuild();
+        } catch (error) {
+            console.error(
+                PRINT_TAB,
+                "Error during installation or build:",
+                error
+            );
+        }
+    }
+
+    private async cleanupAfterBuild() {
+        if (!hasRemovedGaladrielDir) {
+            hasRemovedGaladrielDir = true;
+            this.removeGaladrielTempFolder();
+        }
+    }
+
+    private installGaladrielCss() {
+        const platform = os.platform();
+        const architecture = os.arch();
+        const patch = this.verifyOS(platform, architecture);
+
+        if (patch === null) return;
+
+        console.log(PRINT_TAB, "Starting installation of Galadriel CSS...");
+
+        const downloadUrl = `https://github.com/patrickgunnar/galadrielcss/releases/latest/download/galadrielcss-${patch}${
+            platform === "win32" ? ".exe" : ""
+        }`;
+
+        try {
+            const response = request("GET", downloadUrl);
+            console.log(
+                PRINT_TAB,
+                "Galadriel CSS binary downloaded successfully!"
+            );
+
+            this.createFolderPathSync(tempGaladrielDir);
+            writeFileSync(galadrielPath, response.getBody());
+            chmodSync(galadrielPath, 0o755); // Grant execute permissions
+
+            if (existsSync(galadrielPath)) {
+                console.log(
+                    PRINT_TAB,
+                    `Galadriel CSS binary installed at: ${galadrielPath}`
+                );
+            } else {
+                console.error("Galadriel CSS binary not found!");
+            }
+        } catch (error: any) {
+            console.error(
+                PRINT_TAB,
+                "Error during installation:",
+                error.message
+            );
+            console.error(PRINT_TAB, "Stack trace:", error.stack);
+            throw error; // Re-throw to handle upstream
+        }
+    }
+
+    private async startGaladrielBuild(): Promise<void> {
         return new Promise((resolve, reject) => {
             const process = exec(
-                `npx ${galadrielPath} build`,
+                `${galadrielPath} build`,
                 (err, stdout, stderr) => {
                     if (err) {
-                        reject(err);
+                        reject(
+                            new Error(
+                                `Error executing Galadriel CSS build: ${err.message}`
+                            )
+                        );
                     } else {
                         if (stdout) console.log(stdout);
                         if (stderr) console.error(stderr);
-
                         console.log(
                             PRINT_TAB,
-                            "Galadriel CSS build has completed successfully."
+                            "Galadriel CSS build completed successfully."
                         );
-
                         resolve();
                     }
                 }
@@ -156,14 +161,14 @@ class WebpackClient {
             process.on("exit", (code) => {
                 if (code !== 0) {
                     reject(
-                        new Error(`Process finished with error code: {code}`)
+                        new Error(`Process finished with error code: ${code}`)
                     );
                 }
             });
         });
     }
 
-    processNormalModuleRequest = (_: any, normalModule: NormalModule) => {
+    private processNormalModuleRequest(_: any, normalModule: NormalModule) {
         if (this.shouldProcessFile(normalModule.userRequest)) {
             const webpackLoaderPath = path.resolve(
                 "node_modules",
@@ -178,21 +183,22 @@ class WebpackClient {
                 (loader) => loader.loader === webpackLoaderPath
             );
 
-            if (!hasLoader)
+            if (!hasLoader) {
                 normalModule.loaders.push({
                     loader: webpackLoaderPath,
                     type: "javascript/auto",
-                    options: undefined,
                     ident: "galadrielcss-webpack-loader",
+                    options: undefined,
                 });
+            }
         }
-    };
+    }
 
-    shouldProcessFile(filename: string): boolean {
+    private shouldProcessFile(filename: string): boolean {
         return /\.(js|jsx|ts|tsx|css|md|mdx)$/.test(filename);
     }
 
-    removeGaladrielTempFolder() {
+    private removeGaladrielTempFolder() {
         const galadrielTempFolderPath = path.join(
             process.cwd(),
             ".galadrielcss"
@@ -200,54 +206,59 @@ class WebpackClient {
 
         if (existsSync(galadrielTempFolderPath)) {
             rmSync(galadrielTempFolderPath, { recursive: true, force: true });
-
             console.log(
                 PRINT_TAB,
-                "The Galadriel CSS dependency folder has been successfully removed.\n\n"
+                "The Galadriel CSS dependency folder has been removed."
             );
         }
     }
-}
 
-function createFolderPathSync(fullPath: string) {
-    try {
-        mkdirSync(fullPath, { recursive: true });
-    } catch (error) {
-        console.error(`Failed to create path "${fullPath}":`, error);
-    }
-}
-
-function verifyOS(platform: string, architecture: string): string | null {
-    console.log(
-        PRINT_TAB,
-        `Detecting OS and architecture: ${platform} - ${architecture}`
-    );
-
-    if (platform === "darwin") {
-        return architecture.includes("x64")
-            ? "x86_64-apple-darwin"
-            : "aarch64-apple-darwin";
-    } else if (platform === "win32" && architecture.includes("x64")) {
-        return "x86_64-pc-windows-msvc";
-    } else if (platform === "linux" && architecture.includes("x64")) {
+    private createFolderPathSync(fullPath: string) {
         try {
-            const result = execSync("ldd $(which ls)", { encoding: "utf-8" });
-
-            if (result.includes("musl")) {
-                return "x86_64-unknown-linux-musl";
-            } else if (result.includes("libc.so")) {
-                return "x86_64-unknown-linux-gnu";
-            }
+            mkdirSync(fullPath, { recursive: true });
         } catch (error: any) {
-            console.error("Error detecting Linux distribution:", error.message);
+            console.error(
+                `Failed to create path "${fullPath}":`,
+                error.message
+            );
         }
     }
 
-    console.log(
-        "Your operating system is currently unsupported. Galadriel CSS cannot run on this system."
-    );
+    private verifyOS(platform: string, architecture: string): string | null {
+        console.log(
+            PRINT_TAB,
+            `Detecting OS and architecture: ${platform} - ${architecture}`
+        );
 
-    return null;
+        if (platform === "darwin") {
+            return architecture.includes("x64")
+                ? "x86_64-apple-darwin"
+                : "aarch64-apple-darwin";
+        } else if (platform === "win32" && architecture.includes("x64")) {
+            return "x86_64-pc-windows-msvc";
+        } else if (platform === "linux" && architecture.includes("x64")) {
+            return this.detectLinuxDistro();
+        }
+
+        console.error(
+            "Unsupported OS or architecture. Galadriel CSS cannot run."
+        );
+        return null;
+    }
+
+    private detectLinuxDistro(): string | null {
+        try {
+            const result = execSync("ldd $(which ls)", { encoding: "utf-8" });
+            if (result.includes("musl")) {
+                return "x86_64-unknown-linux-musl";
+            }
+        } catch (error: any) {
+            console.error("Error detecting Linux distro:", error.message);
+            console.log("Defaulting to x86_64-unknown-linux-gnu.");
+        }
+
+        return "x86_64-unknown-linux-gnu";
+    }
 }
 
 export default WebpackClient;
