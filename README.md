@@ -9,13 +9,13 @@ To get started, you need to install the integration client package via npm or ya
 ### Using npm:
 
 ```bash
-npm install @galadrielcss/webpack
+npm install @galadrielcss/webpack --save-dev
 ```
 
 ### Using yarn:
 
 ```bash
-yarn add @galadrielcss/webpack
+yarn add @galadrielcss/webpack --dev
 ```
 
 Once installed, the package is ready to be used in your Webpack configuration.
