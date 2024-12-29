@@ -1,6 +1,6 @@
 {
     "name": "@galadrielcss/webpack",
-    "version": "1.0.0-beta.9",
+    "version": "1.0.0-beta.10",
     "description": "An integration plugin for Galadriel CSS that transforms Nenyr markups and directive into optimized CSS utility classes, streamlining style generation and application.",
     "main": "./dist/index.js",
     "module": "./dist/index.js",

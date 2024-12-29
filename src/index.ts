@@ -34,7 +34,7 @@ class WebpackClient {
         }
     }
 
-    private handleNormalModuleHooks(compilation: Compilation) {
+    private handleNormalModuleHooks = (compilation: Compilation) => {
         const NormalModule = compilation.compiler.webpack?.NormalModule;
 
         const isNormalModuleAvailable =
@@ -51,9 +51,9 @@ class WebpackClient {
                 this.processNormalModuleRequest
             );
         }
-    }
+    };
 
-    private setupProductionHooks(compiler: Compiler) {
+    private setupProductionHooks = (compiler: Compiler) => {
         if (!hasRunGaladrielBuild) {
             hasRunGaladrielBuild = true;
 
@@ -67,9 +67,9 @@ class WebpackClient {
             WEBPACK_CLIENT_NAME,
             this.cleanupAfterBuild
         );
-    }
+    };
 
-    private async handleBeforeRun() {
+    private handleBeforeRun = async () => {
         console.log("\n", PRINT_TAB, "Installing Galadriel CSS...");
 
         try {
@@ -83,16 +83,16 @@ class WebpackClient {
                 error
             );
         }
-    }
+    };
 
-    private async cleanupAfterBuild() {
+    private cleanupAfterBuild = async () => {
         if (!hasRemovedGaladrielDir) {
             hasRemovedGaladrielDir = true;
             this.removeGaladrielTempFolder();
         }
-    }
+    };
 
-    private installGaladrielCss() {
+    private installGaladrielCss = () => {
         const platform = os.platform();
         const architecture = os.arch();
         const patch = this.verifyOS(platform, architecture);
@@ -133,7 +133,7 @@ class WebpackClient {
             console.error(PRINT_TAB, "Stack trace:", error.stack);
             throw error; // Re-throw to handle upstream
         }
-    }
+    };
 
     private async startGaladrielBuild(): Promise<void> {
         return new Promise((resolve, reject) => {
@@ -168,7 +168,7 @@ class WebpackClient {
         });
     }
 
-    private processNormalModuleRequest(_: any, normalModule: NormalModule) {
+    processNormalModuleRequest = (_: any, normalModule: NormalModule) => {
         if (this.shouldProcessFile(normalModule.userRequest)) {
             const webpackLoaderPath = path.resolve(
                 "node_modules",
@@ -192,7 +192,7 @@ class WebpackClient {
                 });
             }
         }
-    }
+    };
 
     private shouldProcessFile(filename: string): boolean {
         return /\.(js|jsx|ts|tsx|css|md|mdx)$/.test(filename);
@@ -224,7 +224,10 @@ class WebpackClient {
         }
     }
 
-    private verifyOS(platform: string, architecture: string): string | null {
+    private verifyOS = (
+        platform: string,
+        architecture: string
+    ): string | null => {
         console.log(
             PRINT_TAB,
             `Detecting OS and architecture: ${platform} - ${architecture}`
@@ -244,7 +247,7 @@ class WebpackClient {
             "Unsupported OS or architecture. Galadriel CSS cannot run."
         );
         return null;
-    }
+    };
 
     private detectLinuxDistro(): string | null {
         try {
