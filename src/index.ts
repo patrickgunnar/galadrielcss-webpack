@@ -6,7 +6,7 @@ import {
     rmSync,
 } from "node:fs";
 import { Compilation, Compiler, NormalModule } from "webpack";
-import { exec, execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import path from "node:path";
 import axios from "axios";
 import os from "os";
@@ -166,33 +166,38 @@ class WebpackClient {
 
     private async startGaladrielBuild(): Promise<void> {
         return new Promise((resolve, reject) => {
-            const process = exec(
-                `npx ${galadrielPath} build`,
-                (err, stdout, stderr) => {
-                    if (err) {
-                        reject(
-                            new Error(
-                                `Error executing Galadriel CSS build: ${err.message}`
-                            )
-                        );
-                    } else {
-                        if (stdout) console.log(stdout);
-                        if (stderr) console.error(stderr);
-                        console.log(
-                            PRINT_TAB,
-                            "Galadriel CSS build completed successfully."
-                        );
-                        resolve();
-                    }
-                }
-            );
+            const process = spawn("npx", [galadrielPath, "build"], {
+                stdio: ["pipe", "pipe", "pipe"],
+            });
 
-            process.on("exit", (code) => {
-                if (code !== 0) {
+            process.stdout.on("data", (data) => {
+                console.log(data.toString());
+            });
+
+            process.stderr.on("data", (data) => {
+                console.error(data.toString());
+            });
+
+            process.on("close", (code) => {
+                if (code === 0) {
+                    console.log(
+                        PRINT_TAB,
+                        "Galadriel CSS build completed successfully."
+                    );
+                    resolve();
+                } else {
                     reject(
                         new Error(`Process finished with error code: ${code}`)
                     );
                 }
+            });
+
+            process.on("error", (err) => {
+                reject(
+                    new Error(
+                        `Error executing Galadriel CSS build: ${err.message}`
+                    )
+                );
             });
         });
     }
