@@ -1,14 +1,14 @@
-import { exec, execSync } from "node:child_process";
 import {
     chmodSync,
+    createWriteStream,
     existsSync,
     mkdirSync,
     rmSync,
-    writeFileSync,
 } from "node:fs";
 import { Compilation, Compiler, NormalModule } from "webpack";
-import request from "sync-request";
+import { exec, execSync } from "node:child_process";
 import path from "node:path";
+import axios from "axios";
 import os from "os";
 
 const WEBPACK_CLIENT_NAME = "GaladrielWebpackClient";
@@ -70,10 +70,11 @@ class WebpackClient {
     };
 
     private handleBeforeRun = async () => {
-        console.log("\n", PRINT_TAB, "Installing Galadriel CSS...");
+        console.log("\n");
+        console.log(PRINT_TAB, "Installing Galadriel CSS...");
 
         try {
-            this.installGaladrielCss();
+            await this.installGaladrielCss();
             console.log(PRINT_TAB, "Starting the Galadriel CSS build...\n\n");
             await this.startGaladrielBuild();
         } catch (error) {
@@ -92,53 +93,81 @@ class WebpackClient {
         }
     };
 
-    private installGaladrielCss = () => {
+    private installGaladrielCss = async (): Promise<void> => {
         const platform = os.platform();
         const architecture = os.arch();
         const patch = this.verifyOS(platform, architecture);
 
-        if (patch === null) return;
+        if (patch === null) {
+            throw new Error(
+                "Unsupported OS or architecture. Galadriel CSS cannot run."
+            );
+        }
 
-        console.log(PRINT_TAB, "Starting installation of Galadriel CSS...");
+        this.createFolderPathSync(tempGaladrielDir);
 
         const downloadUrl = `https://github.com/patrickgunnar/galadrielcss/releases/latest/download/galadrielcss-${patch}${
             platform === "win32" ? ".exe" : ""
         }`;
 
+        console.log(PRINT_TAB, "Starting installation of Galadriel CSS...");
+
+        const writer = createWriteStream(galadrielPath);
+
         try {
-            const response = request("GET", downloadUrl);
-            console.log(
-                PRINT_TAB,
-                "Galadriel CSS binary downloaded successfully!"
-            );
+            const response = await axios.get(downloadUrl, {
+                responseType: "stream",
+                timeout: 15000,
+            });
 
-            this.createFolderPathSync(tempGaladrielDir);
-            writeFileSync(galadrielPath, response.getBody());
-            chmodSync(galadrielPath, 0o755); // Grant execute permissions
-
-            if (existsSync(galadrielPath)) {
-                console.log(
-                    PRINT_TAB,
-                    `Galadriel CSS binary installed at: ${galadrielPath}`
+            if (response.status !== 200) {
+                throw new Error(
+                    `Failed to download Galadriel CSS. HTTP status: ${response.status}`
                 );
-            } else {
-                console.error("Galadriel CSS binary not found!");
             }
+
+            response.data.pipe(writer);
+
+            return new Promise((resolve, reject) => {
+                // Handle write stream errors
+                writer.on("error", (err) => {
+                    console.error(
+                        PRINT_TAB,
+                        `File write error for ${galadrielPath}: ${err.message}`
+                    );
+
+                    reject(err);
+                });
+
+                writer.on("finish", () => {
+                    if (existsSync(galadrielPath)) {
+                        chmodSync(galadrielPath, 0o755); // Grant execute permissions
+                        console.log(
+                            PRINT_TAB,
+                            "Galadriel CSS binary installed successfully!"
+                        );
+
+                        resolve();
+                    } else {
+                        reject(new Error("Galadriel CSS binary not found!"));
+                    }
+                });
+            });
         } catch (error: any) {
             console.error(
                 PRINT_TAB,
-                "Error during installation:",
-                error.message
+                `Failed to install Galadriel CSS: ${error.message}`
             );
-            console.error(PRINT_TAB, "Stack trace:", error.stack);
-            throw error; // Re-throw to handle upstream
+
+            writer.close(); // Ensure the writer is closed
+            throw error;
         }
     };
 
     private async startGaladrielBuild(): Promise<void> {
         return new Promise((resolve, reject) => {
             const process = exec(
-                `${galadrielPath} build`,
+                `npx ${galadrielPath} build`,
                 (err, stdout, stderr) => {
                     if (err) {
                         reject(
@@ -243,9 +272,6 @@ class WebpackClient {
             return this.detectLinuxDistro();
         }
 
-        console.error(
-            "Unsupported OS or architecture. Galadriel CSS cannot run."
-        );
         return null;
     };
 
